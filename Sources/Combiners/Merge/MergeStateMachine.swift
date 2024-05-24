@@ -196,54 +196,54 @@ struct MergeStateMachine<Element>: Sendable {
 
   func next() async -> RegulatedElement<Element> {
     await withTaskCancellationHandler {
-      self.unsuspendAndClearOnCancel()
-    } operation: {
-      self.requestNextRegulatedElements()
+        self.requestNextRegulatedElements()
 
-      let regulatedElement = await withUnsafeContinuation { (continuation: UnsafeContinuation<RegulatedElement<Element>, Never>) in
-        let decision = self.state.withCriticalRegion { state -> OnNextDecision? in
-          switch state.buffer {
-            case .queued(var elements):
-              guard let regulatedElement = elements.popFirst() else {
-                assertionFailure("The buffer cannot by empty, it should be idle in this case")
-                return OnNextDecision(continuation: continuation, regulatedElement: .termination)
-              }
-              switch regulatedElement {
-                case .termination:
-                  state.buffer = .closed
+        let regulatedElement = await withUnsafeContinuation { (continuation: UnsafeContinuation<RegulatedElement<Element>, Never>) in
+          let decision = self.state.withCriticalRegion { state -> OnNextDecision? in
+            switch state.buffer {
+              case .queued(var elements):
+                guard let regulatedElement = elements.popFirst() else {
+                  assertionFailure("The buffer cannot by empty, it should be idle in this case")
                   return OnNextDecision(continuation: continuation, regulatedElement: .termination)
-                case .element(.success):
-                  if elements.isEmpty {
-                    state.buffer = .idle
-                  } else {
-                    state.buffer = .queued(elements)
-                  }
-                  return OnNextDecision(continuation: continuation, regulatedElement: regulatedElement)
-                case .element(.failure):
-                  state.buffer = .closed
-                  return OnNextDecision(continuation: continuation, regulatedElement: regulatedElement)
-              }
-            case .idle:
-              state.buffer = .awaiting(continuation)
-              return nil
-            case .awaiting:
-              assertionFailure("The next function cannot be called concurrently")
-              return OnNextDecision(continuation: continuation, regulatedElement: .termination)
-            case .closed:
-              return OnNextDecision(continuation: continuation, regulatedElement: .termination)
+                }
+                switch regulatedElement {
+                  case .termination:
+                    state.buffer = .closed
+                    return OnNextDecision(continuation: continuation, regulatedElement: .termination)
+                  case .element(.success):
+                    if elements.isEmpty {
+                      state.buffer = .idle
+                    } else {
+                      state.buffer = .queued(elements)
+                    }
+                    return OnNextDecision(continuation: continuation, regulatedElement: regulatedElement)
+                  case .element(.failure):
+                    state.buffer = .closed
+                    return OnNextDecision(continuation: continuation, regulatedElement: regulatedElement)
+                }
+              case .idle:
+                state.buffer = .awaiting(continuation)
+                return nil
+              case .awaiting:
+                assertionFailure("The next function cannot be called concurrently")
+                return OnNextDecision(continuation: continuation, regulatedElement: .termination)
+              case .closed:
+                return OnNextDecision(continuation: continuation, regulatedElement: .termination)
+            }
+          }
+
+          if let decision = decision {
+            decision.continuation.resume(returning: decision.regulatedElement)
           }
         }
 
-        if let decision = decision {
-          decision.continuation.resume(returning: decision.regulatedElement)
+        if case .termination = regulatedElement, case .element(.failure) = regulatedElement {
+          self.task.cancel()
         }
-      }
 
-      if case .termination = regulatedElement, case .element(.failure) = regulatedElement {
-        self.task.cancel()
-      }
-
-      return regulatedElement
+        return regulatedElement
+    } onCancel: {
+        self.unsuspendAndClearOnCancel()
     }
   }
 }

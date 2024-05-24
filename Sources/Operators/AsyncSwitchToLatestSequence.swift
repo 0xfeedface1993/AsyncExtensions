@@ -217,94 +217,94 @@ where Base.Element: AsyncSequence, Base: Sendable, Base.Element.Element: Sendabl
       }
     }
 
-    public mutating func next() async rethrows -> Element? {
-      guard !Task.isCancelled else { return nil }
-      self.startBase()
-
-      return try await withTaskCancellationHandler { [baseTask, state] in
-        baseTask?.cancel()
-        state.withCriticalRegion {
-          $0.childTask?.cancel()
-        }
-      } operation: {
-        while true {
-          let childTask = await withUnsafeContinuation { [state] (continuation: UnsafeContinuation<Task<ChildValue?, Never>?, Never>) in
-            let decision = state.withCriticalRegion { state -> NextDecision in
-              switch state.base {
-                case .newChildIteratorAvailable(let childIterator):
-                  state.base = .processingChildIterator(childIterator)
-                  let childTask = Self.makeChildTask(childIterator: childIterator)
-                  state.childTask = childTask
-                  return .immediatelyResume(childTask)
-                case .processingChildIterator(let childIterator):
-                  let childTask = Self.makeChildTask(childIterator: childIterator)
-                  state.childTask = childTask
-                  return .immediatelyResume(childTask)
-                case .finished(let childIterator):
-                  let childTask = Self.makeChildTask(childIterator: childIterator)
-                  state.childTask = childTask
-                  return .immediatelyResume(childTask)
-                case .failed(let error):
-                  let childTask = Self.makeChildTask(childIterator: .failure(error))
-                  state.childTask = childTask
-                  return .immediatelyResume(childTask)
-                default:
-                  state.base = .waitingForChildIterator(continuation)
-                  return .suspend
+      public mutating func next() async rethrows -> Element? {
+          guard !Task.isCancelled else { return nil }
+          self.startBase()
+          
+          return try await withTaskCancellationHandler {
+              while true {
+                  let childTask = await withUnsafeContinuation { [state] (continuation: UnsafeContinuation<Task<ChildValue?, Never>?, Never>) in
+                      let decision = state.withCriticalRegion { state -> NextDecision in
+                          switch state.base {
+                          case .newChildIteratorAvailable(let childIterator):
+                              state.base = .processingChildIterator(childIterator)
+                              let childTask = Self.makeChildTask(childIterator: childIterator)
+                              state.childTask = childTask
+                              return .immediatelyResume(childTask)
+                          case .processingChildIterator(let childIterator):
+                              let childTask = Self.makeChildTask(childIterator: childIterator)
+                              state.childTask = childTask
+                              return .immediatelyResume(childTask)
+                          case .finished(let childIterator):
+                              let childTask = Self.makeChildTask(childIterator: childIterator)
+                              state.childTask = childTask
+                              return .immediatelyResume(childTask)
+                          case .failed(let error):
+                              let childTask = Self.makeChildTask(childIterator: .failure(error))
+                              state.childTask = childTask
+                              return .immediatelyResume(childTask)
+                          default:
+                              state.base = .waitingForChildIterator(continuation)
+                              return .suspend
+                          }
+                      }
+                      
+                      switch decision {
+                      case .suspend:
+                          break
+                      case .immediatelyResume(let childTask):
+                          continuation.resume(returning: childTask)
+                      }
+                  }
+                  
+                  let value = await childTask?.value
+                  
+                  let decision = state.withCriticalRegion { state -> PostElementDecision in
+                      if state.base.isNewAvailableChildIterator {
+                          return .pass
+                      } else {
+                          switch value {
+                          case .element(_, .success(nil)) where state.base.isFinished:
+                              return .returnFinish
+                          case .element(_, .success(nil)) where !state.base.isFinished:
+                              state.base = .idle
+                              return .pass
+                          case .element(_, .failure(let error)):
+                              state.base = .failed(error)
+                              return .returnError(.failure(error))
+                          case .element(.some(let childIterator), .success(.some(let element))) where state.base.isFinished:
+                              state.base = .finished(.success(childIterator))
+                              return .returnElement(.success(element))
+                          case .element(.some(let childIterator), .success(let element)) where !state.base.isFinished:
+                              state.base = .processingChildIterator(.success(childIterator))
+                              return .returnElement(.success(element!))
+                          case .cancelled where state.base.childIterator != nil:
+                              return .pass
+                          default:
+                              return .returnFinish
+                          }
+                      }
+                  }
+                  
+                  switch decision {
+                  case .pass:
+                      continue
+                  case .returnFinish:
+                      return nil
+                  case .returnError(let error):
+                      self.baseTask?.cancel()
+                      return try error._rethrowGet()
+                  case .returnElement(let element):
+                      return try element._rethrowGet()
+                  }
               }
-            }
-
-            switch decision {
-              case .suspend:
-                break
-              case .immediatelyResume(let childTask):
-                continuation.resume(returning: childTask)
-            }
-          }
-
-          let value = await childTask?.value
-
-          let decision = state.withCriticalRegion { state -> PostElementDecision in
-            if state.base.isNewAvailableChildIterator {
-              return .pass
-            } else {
-              switch value {
-                case .element(_, .success(nil)) where state.base.isFinished:
-                  return .returnFinish
-                case .element(_, .success(nil)) where !state.base.isFinished:
-                  state.base = .idle
-                  return .pass
-                case .element(_, .failure(let error)):
-                  state.base = .failed(error)
-                  return .returnError(.failure(error))
-                case .element(.some(let childIterator), .success(.some(let element))) where state.base.isFinished:
-                  state.base = .finished(.success(childIterator))
-                  return .returnElement(.success(element))
-                case .element(.some(let childIterator), .success(let element)) where !state.base.isFinished:
-                  state.base = .processingChildIterator(.success(childIterator))
-                  return .returnElement(.success(element!))
-                case .cancelled where state.base.childIterator != nil:
-                  return .pass
-                default:
-                  return .returnFinish
+          } onCancel: { [baseTask, state] in
+              baseTask?.cancel()
+              state.withCriticalRegion {
+                  $0.childTask?.cancel()
               }
-            }
           }
-
-          switch decision {
-            case .pass:
-              continue
-            case .returnFinish:
-              return nil
-            case .returnError(let error):
-              self.baseTask?.cancel()
-              return try error._rethrowGet()
-            case .returnElement(let element):
-              return try element._rethrowGet()
-          }
-        }
       }
-    }
   }
 }
 

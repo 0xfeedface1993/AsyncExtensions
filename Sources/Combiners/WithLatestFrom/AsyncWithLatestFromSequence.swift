@@ -121,42 +121,42 @@ where Other: Sendable, Other.Element: Sendable {
     public mutating func next() async rethrows -> Element? {
       guard !self.isTerminated else { return nil }
 
-      return try await withTaskCancellationHandler { [otherTask] in
-        otherTask?.cancel()
-      } operation: { [otherTask, otherState, onBaseElement] in
-        do {
-          while true {
-            guard let baseElement = try await self.base.next() else {
-              self.isTerminated = true
-              otherTask?.cancel()
-              return nil
-            }
+      return try await withTaskCancellationHandler { [otherTask, otherState, onBaseElement] in
+          do {
+            while true {
+              guard let baseElement = try await self.base.next() else {
+                self.isTerminated = true
+                otherTask?.cancel()
+                return nil
+              }
 
-            onBaseElement?(baseElement)
+              onBaseElement?(baseElement)
 
-            let decision = otherState.withCriticalRegion { state -> BaseDecision in
-              switch state {
-                case .idle:
-                  return .pass
-                case .element(.success(let otherElement)):
-                  return .returnElement(.success((baseElement, otherElement)))
-                case .element(.failure(let otherError)):
-                  return .returnElement(.failure(otherError))
+              let decision = otherState.withCriticalRegion { state -> BaseDecision in
+                switch state {
+                  case .idle:
+                    return .pass
+                  case .element(.success(let otherElement)):
+                    return .returnElement(.success((baseElement, otherElement)))
+                  case .element(.failure(let otherError)):
+                    return .returnElement(.failure(otherError))
+                }
+              }
+
+              switch decision {
+                case .pass:
+                  continue
+                case .returnElement(let result):
+                  return try result._rethrowGet()
               }
             }
-
-            switch decision {
-              case .pass:
-                continue
-              case .returnElement(let result):
-                return try result._rethrowGet()
-            }
+          } catch {
+            self.isTerminated = true
+            otherTask?.cancel()
+            throw error
           }
-        } catch {
-          self.isTerminated = true
+      } onCancel: { [otherTask] in
           otherTask?.cancel()
-          throw error
-        }
       }
     }
   }

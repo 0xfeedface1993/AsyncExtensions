@@ -118,35 +118,35 @@ where Base: Sendable, Base.Element: Sendable {
     }
   }
 
-  func next() async rethrows -> [Base.Element]? {
-    try await withTaskCancellationHandler {
-      let output = self.stateMachine.withCriticalRegion { stateMachine in
-        stateMachine.rootTaskIsCancelled()
-      }
-
-      self.handle(rootTaskIsCancelledOutput: output)
-    } operation: {
-      let results = await withUnsafeContinuation { (continuation: UnsafeContinuation<[Int: Result<Base.Element, Error>]?, Never>) in
-        let output = self.stateMachine.withCriticalRegion { stateMachine in
-          stateMachine.newDemandFromConsumer(suspendedDemand: continuation)
+    func next() async rethrows -> [Base.Element]? {
+        try await withTaskCancellationHandler {
+            let results = await withUnsafeContinuation { (continuation: UnsafeContinuation<[Int: Result<Base.Element, Error>]?, Never>) in
+                let output = self.stateMachine.withCriticalRegion { stateMachine in
+                    stateMachine.newDemandFromConsumer(suspendedDemand: continuation)
+                }
+                
+                self.handle(newDemandFromConsumerOutput: output)
+            }
+            
+            guard let results = results else {
+                return nil
+            }
+            
+            let output = self.stateMachine.withCriticalRegion { stateMachine in
+                stateMachine.demandIsFulfilled()
+            }
+            
+            self.handle(demandIsFulfilledOutput: output)
+            
+            return try results.sorted { $0.key < $1.key }.map { try $0.value._rethrowGet() }
+        } onCancel: {
+            let output = self.stateMachine.withCriticalRegion { stateMachine in
+                stateMachine.rootTaskIsCancelled()
+            }
+            
+            self.handle(rootTaskIsCancelledOutput: output)
         }
-
-        self.handle(newDemandFromConsumerOutput: output)
-      }
-
-      guard let results = results else {
-        return nil
-      }
-
-      let output = self.stateMachine.withCriticalRegion { stateMachine in
-        stateMachine.demandIsFulfilled()
-      }
-
-      self.handle(demandIsFulfilledOutput: output)
-
-      return try results.sorted { $0.key < $1.key }.map { try $0.value._rethrowGet() }
     }
-  }
 
   private func handle(rootTaskIsCancelledOutput: StateMachine.RootTaskIsCancelledOutput) {
     switch rootTaskIsCancelledOutput {

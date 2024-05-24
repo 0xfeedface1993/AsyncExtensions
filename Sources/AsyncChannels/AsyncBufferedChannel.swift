@@ -153,73 +153,72 @@ public final class AsyncBufferedChannel<Element>: AsyncSequence, Sendable {
     self.send(.termination)
   }
 
-  func next(onSuspend: (() -> Void)? = nil) async -> Element? {
-    let awaitingId = self.generateId()
-    let cancellation = ManagedCriticalState<Bool>(false)
-
-    return await withTaskCancellationHandler { [state] in
-      let awaiting = state.withCriticalRegion { state -> Awaiting? in
-        cancellation.withCriticalRegion { cancellation in
-          cancellation = true
-        }
-        switch state {
-          case .awaiting(var awaitings):
-            let awaiting = awaitings.remove(.placeHolder(id: awaitingId))
-            if awaitings.isEmpty {
-              state = .idle
-            } else {
-              state = .awaiting(awaitings)
+    func next(onSuspend: (() -> Void)? = nil) async -> Element? {
+        let awaitingId = self.generateId()
+        let cancellation = ManagedCriticalState<Bool>(false)
+        return await withTaskCancellationHandler {
+            await withUnsafeContinuation { [state] (continuation: UnsafeContinuation<Element?, Never>) in
+                let decision = state.withCriticalRegion { state -> AwaitingDecision in
+                    let isCancelled = cancellation.withCriticalRegion { $0 }
+                    guard !isCancelled else { return .resume(nil) }
+                    
+                    switch state {
+                    case .idle:
+                        state = .awaiting([Awaiting(id: awaitingId, continuation: continuation)])
+                        return .suspend
+                    case .queued(var values):
+                        let value = values.popFirst()
+                        switch value {
+                        case .termination:
+                            state = .finished
+                            return .resume(nil)
+                        case .element(let element) where !values.isEmpty:
+                            state = .queued(values)
+                            return .resume(element)
+                        case .element(let element):
+                            state = .idle
+                            return .resume(element)
+                        default:
+                            state = .idle
+                            return .suspend
+                        }
+                    case .awaiting(var awaitings):
+                        awaitings.updateOrAppend(Awaiting(id: awaitingId, continuation: continuation))
+                        state = .awaiting(awaitings)
+                        return .suspend
+                    case .finished:
+                        return .resume(nil)
+                    }
+                }
+                
+                switch decision {
+                case .resume(let element): continuation.resume(returning: element)
+                case .suspend:
+                    onSuspend?()
+                }
             }
-            return awaiting
-          default:
-            return nil
-        }
-      }
-
-      awaiting?.continuation?.resume(returning: nil)
-    } operation: {
-      await withUnsafeContinuation { [state] (continuation: UnsafeContinuation<Element?, Never>) in
-        let decision = state.withCriticalRegion { state -> AwaitingDecision in
-          let isCancelled = cancellation.withCriticalRegion { $0 }
-          guard !isCancelled else { return .resume(nil) }
-
-          switch state {
-            case .idle:
-              state = .awaiting([Awaiting(id: awaitingId, continuation: continuation)])
-              return .suspend
-            case .queued(var values):
-              let value = values.popFirst()
-              switch value {
-                case .termination:
-                  state = .finished
-                  return .resume(nil)
-                case .element(let element) where !values.isEmpty:
-                  state = .queued(values)
-                  return .resume(element)
-                case .element(let element):
-                  state = .idle
-                  return .resume(element)
+        } onCancel: { [state] in
+            let awaiting = state.withCriticalRegion { state -> Awaiting? in
+                cancellation.withCriticalRegion { cancellation in
+                    cancellation = true
+                }
+                switch state {
+                case .awaiting(var awaitings):
+                    let awaiting = awaitings.remove(.placeHolder(id: awaitingId))
+                    if awaitings.isEmpty {
+                        state = .idle
+                    } else {
+                        state = .awaiting(awaitings)
+                    }
+                    return awaiting
                 default:
-                  state = .idle
-                  return .suspend
-              }
-            case .awaiting(var awaitings):
-              awaitings.updateOrAppend(Awaiting(id: awaitingId, continuation: continuation))
-              state = .awaiting(awaitings)
-              return .suspend
-            case .finished:
-              return .resume(nil)
-          }
+                    return nil
+                }
+            }
+            
+            awaiting?.continuation?.resume(returning: nil)
         }
-
-        switch decision {
-          case .resume(let element): continuation.resume(returning: element)
-          case .suspend:
-            onSuspend?()
-        }
-      }
     }
-  }
 
   public func makeAsyncIterator() -> AsyncIterator {
     Iterator(

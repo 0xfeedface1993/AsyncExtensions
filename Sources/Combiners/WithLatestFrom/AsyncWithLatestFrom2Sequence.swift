@@ -168,59 +168,59 @@ where Other1: Sendable, Other2: Sendable, Other1.Element: Sendable, Other2.Eleme
       }
     }
 
-    public mutating func next() async rethrows -> Element? {
-      let shouldReturnNil = self.isTerminated.withCriticalRegion { $0 }
-      guard !shouldReturnNil else { return nil }
-
-      return try await withTaskCancellationHandler { [isTerminated, othersTask] in
-        isTerminated.withCriticalRegion { isTerminated in
-          isTerminated = true
-        }
-        othersTask?.cancel()
-      } operation: { [othersTask, othersState, onBaseElement] in
-        do {
-          while true {
-            guard let baseElement = try await self.base.next() else {
+      public mutating func next() async rethrows -> Element? {
+          let shouldReturnNil = self.isTerminated.withCriticalRegion { $0 }
+          guard !shouldReturnNil else { return nil }
+          
+          return try await withTaskCancellationHandler { [othersTask, othersState, onBaseElement] in
+              do {
+                  while true {
+                      guard let baseElement = try await self.base.next() else {
+                          isTerminated.withCriticalRegion { isTerminated in
+                              isTerminated = true
+                          }
+                          othersTask?.cancel()
+                          return nil
+                      }
+                      
+                      onBaseElement?(baseElement)
+                      
+                      let decision = othersState.withCriticalRegion { state -> BaseDecision in
+                          switch (state.other1State, state.other2State) {
+                          case (.idle, _):
+                              return .pass
+                          case (_, .idle):
+                              return .pass
+                          case (.element(.success(let other1Element)), .element(.success(let other2Element))):
+                              return .returnElement(.success((baseElement, other1Element, other2Element)))
+                          case (.element(.failure(let otherError)), _):
+                              return .returnElement(.failure(otherError))
+                          case (_, .element(.failure(let otherError))):
+                              return .returnElement(.failure(otherError))
+                          }
+                      }
+                      
+                      switch decision {
+                      case .pass:
+                          continue
+                      case .returnElement(let result):
+                          return try result._rethrowGet()
+                      }
+                  }
+              } catch {
+                  isTerminated.withCriticalRegion { isTerminated in
+                      isTerminated = true
+                  }
+                  othersTask?.cancel()
+                  throw error
+              }
+          } onCancel: { [isTerminated, othersTask] in
               isTerminated.withCriticalRegion { isTerminated in
-                isTerminated = true
+                  isTerminated = true
               }
               othersTask?.cancel()
-              return nil
-            }
-
-            onBaseElement?(baseElement)
-
-            let decision = othersState.withCriticalRegion { state -> BaseDecision in
-              switch (state.other1State, state.other2State) {
-                case (.idle, _):
-                  return .pass
-                case (_, .idle):
-                  return .pass
-                case (.element(.success(let other1Element)), .element(.success(let other2Element))):
-                  return .returnElement(.success((baseElement, other1Element, other2Element)))
-                case (.element(.failure(let otherError)), _):
-                  return .returnElement(.failure(otherError))
-                case (_, .element(.failure(let otherError))):
-                  return .returnElement(.failure(otherError))
-              }
-            }
-
-            switch decision {
-              case .pass:
-                continue
-              case .returnElement(let result):
-                return try result._rethrowGet()
-            }
           }
-        } catch {
-          isTerminated.withCriticalRegion { isTerminated in
-            isTerminated = true
-          }
-          othersTask?.cancel()
-          throw error
-        }
       }
-    }
   }
 }
 
