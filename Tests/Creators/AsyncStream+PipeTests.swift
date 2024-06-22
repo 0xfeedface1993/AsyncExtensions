@@ -30,7 +30,7 @@ final class AsyncStream_PipeTests: XCTestCase {
     input.yield(2)
     input.finish()
 
-    wait(for: [finished], timeout: 1.0)
+      wait(for: [finished], timeout: 1.0)
   }
 
   func test_pipe_produces_stream_input_and_output_that_can_throw() {
@@ -58,6 +58,6 @@ final class AsyncStream_PipeTests: XCTestCase {
     input.yield(2)
     input.yield(with: .failure(MockError(code: 1701)))
 
-    wait(for: [finished], timeout: 1.0)
+      wait(for: [finished], timeout: 1.0)
   }
 }

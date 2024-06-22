@@ -40,15 +40,15 @@ private struct LongAsyncSequence<Element>: AsyncSequence, AsyncIteratorProtocol 
   }
 
   mutating func next() async throws -> Element? {
-    return try await withTaskCancellationHandler { [onCancel] in
-      onCancel()
-    } operation: {
-      try await Task.sleep(nanoseconds: self.interval.nanoseconds)
-      self.currentIndex += 1
-      if self.currentIndex == self.failAt {
-        throw MockError(code: 0)
-      }
-      return self.elements.next()
+    return try await withTaskCancellationHandler {
+        try await Task.sleep(nanoseconds: self.interval.nanoseconds)
+        self.currentIndex += 1
+        if self.currentIndex == self.failAt {
+          throw MockError(code: 0)
+        }
+        return self.elements.next()
+    } onCancel: { [onCancel] in
+        onCancel()
     }
   }
 
@@ -169,18 +169,18 @@ final class AsyncSwitchToLatestSequenceTests: XCTestCase {
       for try await element in sut {
         firstElement = element
         canCancelExpectation.fulfill()
-        wait(for: [hasCancelExceptation], timeout: 5)
+        await fulfillment(of: [hasCancelExceptation], timeout: 5)
       }
       XCTAssertEqual(firstElement, 3)
       taskHasFinishedExpectation.fulfill()
     }
 
-    wait(for: [canCancelExpectation], timeout: 5) // one element has been emitted, we can cancel the task
+      wait(for: [canCancelExpectation], timeout: 5) // one element has been emitted, we can cancel the task
 
     task.cancel()
 
     hasCancelExceptation.fulfill() // we can release the lock in the for loop
 
-    wait(for: [taskHasFinishedExpectation], timeout: 5) // task has been cancelled and has finished
+      wait(for: [taskHasFinishedExpectation], timeout: 5) // task has been cancelled and has finished
   }
 }

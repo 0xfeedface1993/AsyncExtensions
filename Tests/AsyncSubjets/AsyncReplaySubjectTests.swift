@@ -93,12 +93,12 @@ final class AsyncReplaySubjectTests: XCTestCase {
       }
     }
 
-    wait(for: [hasReceivedOneElementExpectation], timeout: 1)
+      wait(for: [hasReceivedOneElementExpectation], timeout: 1)
 
     sut.send(2)
     sut.send(3)
 
-    wait(for: [hasReceivedSentElementsExpectation], timeout: 1)
+      wait(for: [hasReceivedSentElementsExpectation], timeout: 1)
   }
 
   func test_sendFinished_ends_the_subject_and_immediately_resumes_futur_consumer() async {
@@ -130,11 +130,11 @@ final class AsyncReplaySubjectTests: XCTestCase {
       hasFinishedExpectation.fulfill()
     }
 
-    wait(for: [hasReceivedOneElementExpectation], timeout: 1)
+    await fulfillment(of: [hasReceivedOneElementExpectation], timeout: 1)
 
     sut.send(.finished)
 
-    wait(for: [hasFinishedExpectation], timeout: 1)
+    await fulfillment(of: [hasFinishedExpectation], timeout: 1)
 
     var iterator = sut.makeAsyncIterator()
     let received = await iterator.next()
@@ -155,19 +155,19 @@ final class AsyncReplaySubjectTests: XCTestCase {
       for await element in sut {
         firstElement = element
         canCancelExpectation.fulfill()
-        wait(for: [hasCancelExceptation], timeout: 5)
+        await fulfillment(of: [hasCancelExceptation], timeout: 5)
       }
       XCTAssertEqual(firstElement, 1)
       taskHasFinishedExpectation.fulfill()
     }
 
-    wait(for: [canCancelExpectation], timeout: 5) // one element has been emitted, we can cancel the task
+      wait(for: [canCancelExpectation], timeout: 5) // one element has been emitted, we can cancel the task
 
     task.cancel()
 
     hasCancelExceptation.fulfill() // we can release the lock in the for loop
 
-    wait(for: [taskHasFinishedExpectation], timeout: 5) // task has been cancelled and has finished
+      wait(for: [taskHasFinishedExpectation], timeout: 5) // task has been cancelled and has finished
   }
 
   func test_subject_handles_concurrency() async {
@@ -200,7 +200,7 @@ final class AsyncReplaySubjectTests: XCTestCase {
       return received.sorted()
     }
 
-    await waitForExpectations(timeout: 1)
+      await fulfillment(of: [canSendExpectation], timeout: 1, enforceOrder: false)
 
     // concurrently push values in the sut 1
     let task1 = Task {

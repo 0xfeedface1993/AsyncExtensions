@@ -73,11 +73,11 @@ final class AsyncMulticastSequenceTests: XCTestCase {
       tasksHaveFinishedExpectation.fulfill()
     }
     
-    wait(for: [taskHaveIterators], timeout: 1)
+      wait(for: [taskHaveIterators], timeout: 1)
     
     sut.connect()
     
-    wait(for: [tasksHaveFinishedExpectation], timeout: 1)
+      wait(for: [tasksHaveFinishedExpectation], timeout: 1)
     
     XCTAssertEqual(spyUpstreamSequence.numberOfIterators, 1)
   }
@@ -126,11 +126,11 @@ final class AsyncMulticastSequenceTests: XCTestCase {
       tasksHaveFinishedExpectation.fulfill()
     }
     
-    wait(for: [taskHaveIterators], timeout: 1)
+      wait(for: [taskHaveIterators], timeout: 1)
     
     sut.connect()
     
-    wait(for: [tasksHaveFinishedExpectation], timeout: 1)
+      wait(for: [tasksHaveFinishedExpectation], timeout: 1)
     
     XCTAssertEqual(spyUpstreamSequence.numberOfIterators, 1)
   }

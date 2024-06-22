@@ -136,29 +136,29 @@ final class AsyncMergeSequenceTests: XCTestCase {
       mergedSequenceIsFinisedExpectation.fulfill()
     }
 
-    wait(for: [canSend2Expectation], timeout: 1)
+      wait(for: [canSend2Expectation], timeout: 1)
 
     stream2.send(2)
-    wait(for: [canSend3Expectation], timeout: 1)
+      wait(for: [canSend3Expectation], timeout: 1)
 
     stream3.send(3)
-    wait(for: [canSend4Expectation], timeout: 1)
+      wait(for: [canSend4Expectation], timeout: 1)
 
     stream3.send(4)
-    wait(for: [canSend5Expectation], timeout: 1)
+      wait(for: [canSend5Expectation], timeout: 1)
 
     stream2.send(5)
-    wait(for: [canSend6Expectation], timeout: 1)
+      wait(for: [canSend6Expectation], timeout: 1)
 
     stream1.send(6)
 
-    wait(for: [canSendFinishExpectation], timeout: 1)
+      wait(for: [canSendFinishExpectation], timeout: 1)
 
     stream1.send(Termination.finished)
     stream2.send(Termination.finished)
     stream3.send(Termination.finished)
 
-    wait(for: [mergedSequenceIsFinisedExpectation], timeout: 1)
+      wait(for: [mergedSequenceIsFinisedExpectation], timeout: 1)
   }
 
   func testMerge_returns_empty_sequence_when_all_sequences_are_empty() async {
@@ -221,14 +221,14 @@ final class AsyncMergeSequenceTests: XCTestCase {
       }
     }
 
-    wait(for: [canSend2Expectation], timeout: 1)
+      wait(for: [canSend2Expectation], timeout: 1)
 
     stream2.send(2)
-    wait(for: [canSend3Expectation], timeout: 1)
+      wait(for: [canSend3Expectation], timeout: 1)
 
     stream1.send(.failure(MockError(code: 1)))
 
-    wait(for: [mergedSequenceIsFinishedExpectation], timeout: 1)
+      wait(for: [mergedSequenceIsFinishedExpectation], timeout: 1)
   }
 
   func testMerge_finishes_when_task_is_cancelled() {
@@ -247,19 +247,19 @@ final class AsyncMergeSequenceTests: XCTestCase {
       for try await element in sut {
         firstElement = element
         canCancelExpectation.fulfill()
-        wait(for: [hasCancelExceptation], timeout: 5)
+        await fulfillment(of: [hasCancelExceptation], timeout: 5)
       }
       XCTAssertEqual(firstElement, 10)
       taskHasFinishedExpectation.fulfill()
     }
 
-    wait(for: [canCancelExpectation], timeout: 5) // one element has been emitted, we can cancel the task
+      wait(for: [canCancelExpectation], timeout: 5) // one element has been emitted, we can cancel the task
 
     task.cancel()
 
     hasCancelExceptation.fulfill() // we can release the lock in the for loop
 
-    wait(for: [taskHasFinishedExpectation], timeout: 5) // task has been cancelled and has finished
+      wait(for: [taskHasFinishedExpectation], timeout: 5) // task has been cancelled and has finished
   }
 
   func testMerge_finishes_when_task_is_cancelled_while_waiting_for_an_element() {
@@ -281,12 +281,12 @@ final class AsyncMergeSequenceTests: XCTestCase {
       hasCancelExceptation.fulfill()
     }
 
-    wait(for: [canIterateExpectation], timeout: 1)
+      wait(for: [canIterateExpectation], timeout: 1)
 
-    wait(for: [firstElementHasBeenReceivedExpectation], timeout: 1)
+      wait(for: [firstElementHasBeenReceivedExpectation], timeout: 1)
 
     task.cancel()
 
-    wait(for: [hasCancelExceptation], timeout: 1)
+      wait(for: [hasCancelExceptation], timeout: 1)
   }
 }
