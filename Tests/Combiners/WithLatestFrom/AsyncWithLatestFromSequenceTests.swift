@@ -125,7 +125,7 @@ final class AsyncWithLatestFromSequenceTests: XCTestCase {
     XCTAssertNil(pastEnd)
   }
 
-  func test_withLatestFrom_finishes_loop_when_task_is_cancelled() async {
+  func test_withLatestFrom_finishes_loop_when_task_is_cancelled() {
     let iterated = expectation(description: "The iteration has produced 1 element")
     let finished = expectation(description: "The iteration has finished")
 
@@ -151,11 +151,11 @@ final class AsyncWithLatestFromSequenceTests: XCTestCase {
     }
 
     // ensure the other task actually starts
-    await fulfillment(of: [iterated], timeout: 1.0)
+    wait(for: [iterated], timeout: 1.0)
 
     // cancellation should ensure the loop finishes
     // without regards to the remaining underlying sequence
     task.cancel()
-    await fulfillment(of: [finished], timeout: 1.0)
+    wait(for: [finished], timeout: 1.0)
   }
 }
